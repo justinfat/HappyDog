@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0">
+    <style>
+        *{
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            overflow: hidden;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <title>My p5.js Project</title>
+</head>
+<body>
+    <script>
+        // setup() and All
+        let screenWidth, screenHeight;
+        let fr=30, light_blue, light_orange;
+        let interacteMode = "Sleep";
+        // Standby(), Eye(), EyesEnter(), EyesLeave()
+        let eyeLX_origin = 220, eyeRX_origin = 580, eyeY_origin = 240;
+        let eyeW_origin = 120, eyeH_origin = 200, eyeH_closed = 20;
+        let vL, vR, eyeL, eyeR;
+        let eyeBlinkCount = 0, eyeCloseCountdown = 0;
+        let mousePressedCount = 0;
+        let noInputCount = 0;
+        let eyesEnterCount = 0, eyesLeaveCount = 0;
+        // Sleep(), Awake()
+        let sleepCurvePointsY = [], sleepCurvePointsDir = [];
+        let sleepWaveSteps = 10, sleepWaveAmp = 30;
+        let awakeCount = 0;
+        // Contact(), ContactsMenu(), ContactsEnter(), ContactsLeave(), Requesting()
+        let contacts = [], contactsNum = 5, maskImg;
+        let contactsX_origin = [], contactD_origin = 120;
+        let contactsEnterCount = 0, contactsLeaveCount = 0;
+        let contactIsSelected = null, contactChoosedCount = 0;
+        let requestingCount = 0;
+        // VideoCalling()
+        let videoImg;
+        let dataFromServer='', dataToServer = 'Hello from p5.js';
+        let frameCount = 0;
+
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.on('uds_data', (event, data) => {
+            console.log(data);
+            // Now you can use the data in your p5.js sketch
+            dataFromServer = data;
+        });
+
+        function preload(){
+            maskImg = loadImage('mask_img.png');
+            for(let i=0; i<contactsNum; i++){
+                contacts[i] = new Contact(i);
+            }
+        }
+
+        function setup() {
+            // setup() and All
+            screenWidth = displayWidth;
+            screenHeight = displayHeight; 
+            createCanvas(screenWidth,screenHeight);
+            frameRate(fr);
+            background(100);
+            imageMode(CENTER);
+            rectMode(CENTER);
+            smooth();
+            light_blue = color(115, 251, 253);
+            light_orange = color(255, 184, 62);
+            for (let element of document.getElementsByClassName("p5Canvas")) {
+                element.addEventListener("contextmenu", (e) => e.preventDefault());
+            }
+            noCursor();
+            // GUI_controller
+            
+            // Eye()
+            eyeL = new Eye(eyeLX_origin, eyeY_origin, eyeW_origin, eyeH_origin);
+            eyeR = new Eye(eyeRX_origin, eyeY_origin, eyeW_origin, eyeH_origin);
+            // Sleep()
+            for(let i=0; i<=(sleepWaveSteps-2); i++){
+                sleepCurvePointsY[i] = ceil(random(-sleepWaveAmp, sleepWaveAmp));
+                sleepCurvePointsDir[i] = random([-0.5,0.5]);
+            }
+            // Contact()
+            let interval = (screenWidth-contactD_origin*contactsNum)/(contactsNum+1);
+            for(let i=0; i<contactsNum; i++){
+                contacts[i].img.mask(maskImg);
+                contacts[i].x_origin = interval+contactD_origin/2 + (contactD_origin+interval)*i;
+                contacts[i].position(contacts[i].x_origin, eyeY_origin);
+                contacts[i].c = light_blue;
+            }
+            videoImg = createImg("http://192.168.1.22:8586/video_feed", "video_feed", '', function(err) {console.error(err);});
+            videoImg.hide();
+            
+        }
+
+        function draw() {
+            background(0);
+
+            if(interacteMode === "Standby"){
+                Standby();
+            } else if(interacteMode === "Sleep"){
+                Sleep();
+            } else if(interacteMode === "Awake"){
+                Awake();
+            } else if(interacteMode === "EyesEnter"){
+                EyesEnter();
+            } else if(interacteMode === "Standby2Menu"){
+                EyesLeave();
+                ContactsEnter();
+            } else if (interacteMode === "ContactsMenu"){
+                ContactsMenu();
+            } else if(interacteMode === "ContactsMenu2Standby"){
+                ContactsLeave();
+                EyesEnter();
+            } else if(interacteMode === "ContactsMenu2ContactCalling"){
+                ContactsLeave();
+                ContactChoosed(contactIsSelected);
+            } else if(interacteMode === "Requesting"){
+                Requesting(contactIsSelected);
+            } else if(interacteMode === "VideoCalling"){
+                VideoCalling();
+            }
+
+        }
+
+        function VideoCalling(){
+            // image(videoImg, screenWidth/2, screenHeight/2)
+            image(videoImg, screenWidth/2, screenHeight/2, screenWidth, videoImg.height*screenWidth/videoImg.width);
+            if(mouseIsPressed){
+                interacteMode = "Standby";
+            }
+        }
+
+        function Sleep(){
+            strokeWeight(eyeH_closed);
+            stroke(light_blue);
+            noFill();
+            beginShape();
+            curveVertex(0, eyeY_origin);
+            curveVertex(0, eyeY_origin);
+            for(let i=0; i<=(sleepWaveSteps-2); i++){
+                if(abs(sleepCurvePointsY[i]) >= sleepWaveAmp){
+                    sleepCurvePointsDir[i] = -sleepCurvePointsDir[i];
+                }
+                sleepCurvePointsY[i] = sleepCurvePointsY[i] + sleepCurvePointsDir[i];
+                curveVertex((i+1)*screenWidth/sleepWaveSteps, eyeY_origin + sleepCurvePointsY[i]);
+            }
+            curveVertex(screenWidth, eyeY_origin);
+            curveVertex(screenWidth, eyeY_origin);
+            endShape();
+            if(mouseIsPressed){
+                interacteMode = "Awake";
+            }
+        }
+
+        function Awake(){
+            awakeCount++;
+            if(awakeCount <= 0.5*fr){
+                strokeWeight(eyeH_closed);
+                stroke(light_blue);
+                noFill();
+                beginShape();
+                curveVertex(0, eyeY_origin);
+                curveVertex(0, eyeY_origin);
+                for(let i=0; i<=(sleepWaveSteps-2); i++){
+                    sleepCurvePointsY[i] -= sleepCurvePointsY[i]*awakeCount/(0.5*fr);
+                    curveVertex((i+1)*screenWidth/sleepWaveSteps, eyeY_origin + sleepCurvePointsY[i]);
+                }
+                curveVertex(screenWidth, eyeY_origin);
+                curveVertex(screenWidth, eyeY_origin);
+                endShape();
+            } else if(awakeCount <= 1*fr){
+                strokeWeight(eyeH_closed);
+                stroke(light_blue);
+                line(0, eyeY_origin, screenWidth/2, eyeY_origin);
+                line(screenWidth/2, eyeY_origin, screenWidth, eyeY_origin);
+            } else if(awakeCount <= 1.5*fr){
+                strokeWeight(eyeH_closed*(3-3*awakeCount/(1.5*fr)));
+                stroke(light_blue);
+                line(0, eyeY_origin, screenWidth/2, eyeY_origin);
+                line(screenWidth/2, eyeY_origin, screenWidth, eyeY_origin);
+            } else{
+                // eyeL.y = (eyeY_origin-4*0.3*fr+60*0.7*fr);
+                // eyeR.y = (eyeY_origin-4*0.3*fr+60*0.7*fr);
+                interacteMode = "EyesEnter";
+                ipcRenderer.send('message_to_python', 'Awake');
+                awakeCount = 0;
+            }
+        }
+
+        function Standby(){
+            eyeL.display();
+            eyeR.display();
+
+            if(mouseIsPressed){
+                vL = createVector(mouseX-eyeL.x, mouseY-eyeL.y);
+                vR = createVector(mouseX-eyeR.x, mouseY-eyeR.y);
+                vL.limit(30);
+                vR.limit(30);
+
+                if(eyeL.mouseIsOn()){
+                    eyeL.close();
+                } else{
+                    eyeL.open();
+                    eyeL.x = eyeLX_origin+vL.x; eyeL.y = eyeY_origin+vL.y;
+                }
+                if(eyeR.mouseIsOn()){
+                    eyeR.close();
+                } else{
+                    eyeR.open();
+                    eyeR.x = eyeRX_origin+vR.x; eyeR.y = eyeY_origin+vR.y;
+                }		
+
+                // noFill();
+                // strokeWeight(8);
+                // stroke(light_orange);
+                // arc(mouseX, mouseY, 100, 100, -HALF_PI, -HALF_PI + 2*PI*mousePressedCount/(2*fr));
+                LongTouch(2);
+                mousePressedCount++;
+                if(mousePressedCount > 2*fr){
+                    interacteMode = "Standby2Menu";
+                    mousePressedCount = 0;
+                    eyeL.open(); eyeR.open();
+                    eyeL.x = eyeLX_origin; eyeR.x = eyeRX_origin;
+                    eyeL.y = eyeY_origin; eyeR.y = eyeY_origin;
+                }
+                noInputCount = 0;
+            } else{
+                eyeL.open(); eyeR.open();
+                eyeL.x = eyeLX_origin; eyeL.y = eyeY_origin;
+                eyeR.x = eyeRX_origin; eyeR.y = eyeY_origin;
+                noInputCount++;
+                mousePressedCount = 0;
+            }
+
+            if(eyeBlinkCount > random(8*fr,12*fr)){
+                eyeL.close(); eyeR.close();
+                eyeBlinkCount = 0;
+                eyeCloseCountdown = 0.5*fr;
+            } else if (eyeCloseCountdown > 0){
+                eyeL.close(); eyeR.close();
+                eyeCloseCountdown--;
+            } else{
+                eyeBlinkCount++;
+            }
+
+            if(noInputCount>120*fr){
+                interacteMode = "Sleep";
+                ipcRenderer.send('message_to_python', 'Asleep');
+                noInputCount = 0;
+            }
+        }
+
+        function LongTouch(second){
+            noFill();
+            strokeWeight(8);
+            stroke(light_orange);
+            arc(mouseX+30, mouseY-60, 50, 50, -HALF_PI, -HALF_PI + 2*PI*mousePressedCount/(second*fr));
+        }
+
+        function Eye(x, y, w, h){
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+            this.r = 20;
+            this.c = light_blue;
+
+            this.display = function() {
+                noStroke();
+                fill(this.c);
+                rect(this.x, this.y, this.w, this.h, this.r);
+            }
+
+            this.close = function(){
+                this.h = eyeH_closed;
+            }
+            this.open = function(){
+                this.h = eyeH_origin;
+            }
+
+            this.mouseIsOn = function() {
+                if(abs(mouseX-this.x)<eyeW_origin/2 && abs(mouseY-this.y)<eyeH_origin/2){
+                    return true;
+                } else{
+                    return false;
+                }
+            }
+        }
+
+        function EyesEnter(){
+            eyesEnterCount++;
+            if(eyesEnterCount <= 0.7*fr){
+                eyeL.y = (eyeY_origin-4*0.3*fr+60*0.7*fr)-60*eyesEnterCount;
+                eyeR.y = (eyeY_origin-4*0.3*fr+60*0.7*fr)-60*eyesEnterCount;
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesEnterCount <= 1*fr){
+                eyeL.y = (eyeY_origin-4*0.3*fr)+4*(eyesEnterCount-0.7*fr);
+                eyeR.y = (eyeY_origin-4*0.3*fr)+4*(eyesEnterCount-0.7*fr);
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesEnterCount > 1*fr){
+                eyeL.display();
+                eyeR.display();
+                interacteMode = "Standby";
+                eyesEnterCount = 0;
+            }
+        }
+
+        function EyesLeave(){
+            eyesLeaveCount++;
+            if(eyesLeaveCount <= 0.3*fr){
+                eyeL.y -= 4; eyeR.y -= 4;
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesLeaveCount <= 1*fr){
+                eyeL.y += 60; eyeR.y += 60;
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesLeaveCount > 1*fr){
+                // interacteMode = "StartMenu";
+                eyesLeaveCount = 0;
+            }
+        }
+
+        function ContactsEnter(){
+            contactsEnterCount++;
+            if(contactsEnterCount <= 0.7*fr){
+                for(let i=0; i<contactsNum; i++){
+                    contacts[i].y = (eyeY_origin+4*0.3*fr-60*0.7*fr)+60*contactsEnterCount;
+                    contacts[i].display();
+                }
+            } else if(contactsEnterCount <= 1*fr){
+                for(let i=0; i<contactsNum; i++){
+                    contacts[i].y = (eyeY_origin+4*0.3*fr)-4*(contactsEnterCount-0.7*fr);
+                    contacts[i].display();
+                }
+            } else if(contactsEnterCount > 1*fr){
+                for(let i=0; i<contactsNum; i++){
+                    contacts[i].display();
+                }
+                interacteMode = "ContactsMenu";
+                contactsEnterCount = 0;
+            }
+        }
+
+        function ContactsLeave(){
+            contactsLeaveCount++;
+            if(contactsLeaveCount <= 0.3*fr){
+                for(let i=0; i<contactsNum; i++){
+                    if(i !== contactIsSelected){
+                        contacts[i].y += 4;
+                        contacts[i].display();
+                    }
+                }
+            } else if(contactsLeaveCount <= 1*fr){
+                for(let i=0; i<contactsNum; i++){
+                    if(i !== contactIsSelected){
+                        contacts[i].y -= 60;
+                        contacts[i].display();
+                    }
+                }
+            } else if(contactsLeaveCount > 1*fr){
+                for(let i=0; i<contactsNum; i++){
+                    if(i !== contactIsSelected){
+                        contacts[i].display();
+                    }
+                }
+                // interacteMode = "ContactsMenu";
+                contactsLeaveCount = 0;
+            }
+        }
+
+        function ContactsMenu(){
+            if(mouseIsPressed){
+                for(let i=0; i<contactsNum; i++){
+                    if(contacts[i].mouseIsOn()){
+                        contacts[i].d = contactD_origin*1.5;
+                        contactIsSelected = i;
+                    } else{
+                        contacts[i].d = contactD_origin;
+                        contactIsSelected = contactIsSelected;
+                    }
+                }
+                
+                if(contactIsSelected === null){
+                    // noFill();
+                    // strokeWeight(8);
+                    // stroke(light_orange);
+                    // arc(mouseX, mouseY, 50, 50, -HALF_PI, -HALF_PI + 2*PI*mousePressedCount/(2*fr));
+                    // LongTouch(2);
+                    mousePressedCount++;
+                } else{
+                    mousePressedCount = 0;
+                }
+                
+                noInputCount = 0;
+            } else{
+                for(let i=0; i<contactsNum; i++){
+                    contacts[i].d = contactD_origin;
+                    contactIsSelected = null;
+                }
+                mousePressedCount = 0;
+                noInputCount++;
+            }
+            
+            for(let i=0; i<contactsNum; i++){
+                contacts[i].display();
+                if(contactIsSelected === i){
+                    noFill();
+                    strokeWeight(8);
+                    stroke(light_orange);
+                    arc(contacts[i].x, contacts[i].y, contacts[i].d-8, contacts[i].d-8,
+                            -HALF_PI, -HALF_PI + 2*PI*contacts[i].selectedCount/(1.5*fr));
+                    contacts[i].selectedCount++;
+                } else{
+                    contacts[i].selectedCount = 0;
+                }
+                if(contacts[i].selectedCount > 1.5*fr){
+                    interacteMode = "ContactsMenu2ContactCalling";
+                    contacts[i].selectedCount = 0;
+                }
+            }
+            
+            if(mousePressedCount > 0){
+                LongTouch(2);
+            }
+            if(mousePressedCount > 2*fr){
+                interacteMode = "ContactsMenu2Standby";
+                mousePressedCount = 0;
+            }
+            
+            if(noInputCount>30*fr){
+                interacteMode = "ContactsMenu2Standby";
+                noInputCount = 0;
+            }
+        }
+
+        function Contact(i){
+            this.img = loadImage(`contact_img_${i}.jpg`);
+            this.d = contactD_origin;
+            this.selectedCount = 0;
+            
+            this.position = function(x, y){
+                this.x = x; this.y = y;	
+            }
+            
+            this.display = function(){
+                noStroke();
+                fill(this.c);
+                circle(this.x, this.y, this.d);
+                image(this.img, this.x, this.y, this.d-16, this.d-16);
+            }
+            
+            this.mouseIsOn = function() {
+                if(dist(mouseX, mouseY, this.x, this.y) < this.d/2){
+                    return true;
+                } else{
+                    return false;
+                }
+            }
+        }
+
+        function ContactChoosed(i){
+            contactChoosedCount++;
+            if(contactChoosedCount <= 1*fr){
+                contacts[i].x += (screenWidth/2-contacts[i].x)*contactChoosedCount/(1*fr);
+                contacts[i].d += (320-contacts[i].d)*contactChoosedCount/(1*fr);
+            } else{
+                interacteMode = "Requesting";
+                contactChoosedCount = 0;
+            }
+            contacts[i].display();
+            noFill();
+            strokeWeight(8);
+            stroke(light_orange);
+            arc(contacts[i].x, contacts[i].y, contacts[i].d-8, contacts[i].d-8,
+                    -HALF_PI, -HALF_PI+QUARTER_PI);
+            
+        }
+
+        function Requesting(i){
+            contacts[i].display();
+            noFill();
+            strokeWeight(8);
+            stroke(light_orange);
+            arc(contacts[i].x, contacts[i].y, contacts[i].d-8, contacts[i].d-8,
+                    -HALF_PI + 6*PI/180*requestingCount, 
+                    -HALF_PI+QUARTER_PI + 6*PI/180*requestingCount);
+            requestingCount++;
+            if(requestingCount > 5*fr){
+                interacteMode = "VideoCalling";
+            }
+        }
+    </script>
+</body>
+</html>
