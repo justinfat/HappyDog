@@ -1,65 +1,41 @@
 import cv2
-import socket
 import numpy as np
-import struct
+import time
 from tflite_runtime.interpreter import Interpreter
 from flask import Flask, Response
 from flask_cors import CORS
 import threading
-import pyaudio
-import pickle
-import ctypes
 
 videoHeight = 240
 videoWidth = 320
-video_data_ready = False
+video_frame = None
+picture = None
 
-global_buffer = None
 app = Flask(__name__)
 CORS(app)
-
-CHUNK = 1024
-FORMAT = pyaudio.paInt16
-CHANNELS = 2
-RATE = 44100
-RECORD_SECONDS = 0.5
-
-ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
-def py_error_handler(filename, line, function, err, fmt):
-#   print('messages are yummy')
-    return
-c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
-
 def generate_frames():
-    global global_buffer
+    global picture
 
     while True:
-        if global_buffer is not None:
+        if picture is not None:
             yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + global_buffer + b'\r\n\r\n')
+                b'Content-Type: image/jpeg\r\n\r\n' + picture + b'\r\n\r\n')
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-video_connection_socket = None
-audio_connection_socket = None
-video_frame = None
-
 class InteractController:
     def __init__(self, communication_queues):
         self._motion_queue = communication_queues['motion_queue']
-        self._socket_queue = communication_queues['socket_queue']
-        # Hide the warning from pyaudio (ALSA)
-        asound = ctypes.cdll.LoadLibrary('libasound.so')
-        asound.snd_lib_error_set_handler(c_error_handler)
+        self._GUI_queue = communication_queues['GUI_queue']
 
     def run(self, communication_queues):
         global video_connection_socket
         global audio_connection_socket 
 
         controller = InteractController(communication_queues)
-        video_connection_socket = self._socket_queue.get(block=True)
-        audio_connection_socket = self._socket_queue.get(block=True)
+        # video_connection_socket = self._socket_queue.get(block=True)
+        # audio_connection_socket = self._socket_queue.get(block=True)
         face_track_thread = threading.Thread(target=controller.face_track, args=())
         emotion_recognize_thread = threading.Thread(target=controller.emotion_recognize, args=())
         face_track_thread.start()
@@ -69,7 +45,7 @@ class InteractController:
         emotion_recognize_thread.join()
 
     def face_track(self):
-        global video_data_ready
+        global video_frame
         capture = cv2.VideoCapture(0)
         capture.set(cv2.CAP_PROP_FPS, 10)
 
@@ -77,22 +53,22 @@ class InteractController:
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
         while True:
-            ret, frame = capture.read()
+            ret, video_frame = capture.read()
             if not ret:
                 print('unable to read the video...')
                 break
 
-            frame = cv2.resize(frame, (320, 240))
-            frame = np.frombuffer(frame, dtype=np.uint8).reshape(videoHeight, videoWidth, 3)
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            video_frame = cv2.resize(video_frame, (320, 240))
+            video_frame = np.frombuffer(video_frame, dtype=np.uint8).reshape(videoHeight, videoWidth, 3)
+            gray = cv2.cvtColor(video_frame, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
 
             for (x, y, w, h) in faces:
                 faceCenter = (int(x+w/2), int(y+h/2))
-                # cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2) # face region
-                cv2.putText(frame, 'x: %s, y: %s'%faceCenter, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1) # face center coordinates
-                cv2.line(frame, faceCenter, (int(videoWidth/2), int(videoHeight/2)), (0, 0, 255), 2) # face center to frame center line
-                cv2.rectangle(frame, (int(videoWidth*0.25), int(videoHeight*0.25)), (int(videoWidth*0.75), int(videoHeight*0.75)), (255, 0, 0), 2)
+                # cv2.rectangle(video_frame, (x, y), (x+w, y+h), (255, 0, 0), 2) # face region
+                cv2.putText(video_frame, 'x: %s, y: %s'%faceCenter, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1) # face center coordinates
+                cv2.line(video_frame, faceCenter, (int(videoWidth/2), int(videoHeight/2)), (0, 0, 255), 2) # face center to video_frame center line
+                cv2.rectangle(video_frame, (int(videoWidth*0.25), int(videoHeight*0.25)), (int(videoWidth*0.75), int(videoHeight*0.75)), (255, 0, 0), 2)
                 # face = gray[y:y+h, x:x+w] # choose the face region from gray
 
                 if faceCenter[0] > videoWidth*0.75:
@@ -109,14 +85,11 @@ class InteractController:
                     self._motion_queue.put('TooHigh', timeout=60)
                     # print('Too high...')
 
-            self.video_data = frame.tobytes() # for send_video()
-            if video_data_ready is False:
-                video_data_ready = True
-
         capture.release()
 
     def emotion_recognize(self):
         global video_frame
+        global picture
         # Load the TFLite model and allocate tensors.
         interpreter = Interpreter(model_path="/home/pi/SpotLink/main/output_controller/model_mobilenet_4class.tflite")
         interpreter.allocate_tensors()
@@ -138,7 +111,8 @@ class InteractController:
 
         while True:
             if video_frame is None or video_frame.size == 0:
-                print("Error: video frame is empty")
+                print("Error: video_frame is empty...")
+                time.sleep(2)
             else:
                 gray = cv2.cvtColor(video_frame, cv2.COLOR_BGR2GRAY)
                 faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)

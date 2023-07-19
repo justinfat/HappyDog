@@ -1,5 +1,6 @@
 import socket
 import os
+from queue import Empty
 
 # The address of the UNIX domain socket
 server_address = '/home/pi/uds_socket'
@@ -7,6 +8,7 @@ server_address = '/home/pi/uds_socket'
 class GUIController:
     def __init__(self, communication_queues):
         self._motion_queue = communication_queues['motion_queue']
+        self._GUI_queue = communication_queues['GUI_queue']
 
     def GUI_comm(self):
         # Make sure the socket does not already exist
@@ -23,8 +25,8 @@ class GUIController:
 
         while True:
             try:
-                # print('connected')
                 while True:
+                    ## receive data from the client
                     data = connection_socket.recv(1024).decode()
                     if data:
                         self._motion_queue.put(data, timeout=60)
@@ -34,6 +36,13 @@ class GUIController:
                     else:
                         # print('no more data, socket closing')
                         break
+
+                    ## Send data from GUI_queue to the client
+                    try:
+                        GUI_data = self._GUI_queue.get_nowait()
+                        connection_socket.sendall(GUI_data.encode())
+                    except Empty:
+                        pass
 
             finally:
                 # Clean up the connection

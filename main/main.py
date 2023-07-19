@@ -6,9 +6,8 @@ import multiprocessing
 
 from motion_controller.motion_controller import MotionController
 # from abort_controller.abort_controller import AbortController
-from gamepad_controller.gamepad_controller import GamepadController
-from input_controller.input_controller import InputController
-from output_controller.output_controller import OutputController
+# from gamepad_controller.gamepad_controller import GamepadController
+from interact_controller.interact_controller import InteractController
 from GUI_controller.GUI_controller import GUIController
 
 log = Logger().setup_logger()
@@ -26,15 +25,18 @@ def process_motion_controller(communication_queues):
     motion = MotionController(communication_queues)
     motion.do_process_events_from_queues()
 
-def process_gamepad_controller(communication_queues):
-    gamepad_controller = GamepadController(communication_queues)
-    gamepad_controller.do_process_events_from_queues()
+# def process_gamepad_controller(communication_queues):
+#     gamepad_controller = GamepadController(communication_queues)
+#     gamepad_controller.do_process_events_from_queues()
 
 # def process_input_controller(communication_queues):
 #     InputController(communication_queues).run(communication_queues)
 
 # def process_output_controller(communication_queues):
 #     OutputController(communication_queues).run(communication_queues)
+
+def process_interact_controller(communication_queues):
+    InteractController(communication_queues).run(communication_queues)
 
 def process_GUI_controller(communication_queues):
     GUIController(communication_queues).GUI_comm()
@@ -45,7 +47,7 @@ def create_controllers_queues():
     #                         'motion_queue': multiprocessing.Queue(1),
     #                         'socket_queue': multiprocessing.Queue(1)}
     communication_queues = {'motion_queue': multiprocessing.Queue(1),
-                            'socket_queue': multiprocessing.Queue(1)}
+                            'GUI_queue': multiprocessing.Queue(1)}
 
     # log.info('Created the communication queues: ' + ', '.join(communication_queues.keys()))
 
@@ -79,6 +81,10 @@ def main():
                                                 args=(communication_queues,))
     motion_controller.daemon = True
 
+    interact_controller = multiprocessing.Process(target=process_interact_controller, 
+                                              args=(communication_queues,))
+    interact_controller.daemon = True
+
     GUI_controller = multiprocessing.Process(target=process_GUI_controller, 
                                                 args=(communication_queues,))
     GUI_controller.daemon = True
@@ -90,6 +96,7 @@ def main():
     # input_controller.start()
     # output_controller.start()
     # abort_controller.start()
+    interact_controller.start()
     motion_controller.start()
     GUI_controller.start()
     # gamepad_controller.start()
@@ -109,6 +116,7 @@ def main():
     # input_controller.join()
     # output_controller.join()
     # abort_controller.join()
+    interact_controller.join()
     motion_controller.join()
     GUI_controller.join()
     # gamepad_controller.join()
