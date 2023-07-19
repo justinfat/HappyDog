@@ -46,13 +46,6 @@
             dataFromServer = data;
         });
 
-        function preload(){
-            maskImg = loadImage('mask_img.png');
-            for(let i=0; i<contactsNum; i++){
-                contacts[i] = new Contact(i);
-            }
-        }
-
         function setup() {
             // setup() and All
             screenWidth = displayWidth;
@@ -80,14 +73,7 @@
                 sleepCurvePointsY[i] = ceil(random(-sleepWaveAmp, sleepWaveAmp));
                 sleepCurvePointsDir[i] = random([-0.5,0.5]);
             }
-            // Contact()
-            let interval = (screenWidth-contactD_origin*contactsNum)/(contactsNum+1);
-            for(let i=0; i<contactsNum; i++){
-                contacts[i].img.mask(maskImg);
-                contacts[i].x_origin = interval+contactD_origin/2 + (contactD_origin+interval)*i;
-                contacts[i].position(contacts[i].x_origin, eyeY_origin);
-                contacts[i].c = light_blue;
-            }
+            
             videoImg = createImg("http://192.168.1.22:8586/video_feed", "video_feed", '', function(err) {console.error(err);});
             videoImg.hide();
             
@@ -234,13 +220,6 @@
             }
         }
 
-        // function LongTouch(second){
-        //     noFill();
-        //     strokeWeight(8);
-        //     stroke(light_orange);
-        //     arc(mouseX+30, mouseY-60, 50, 50, -HALF_PI, -HALF_PI + 2*PI*mousePressedCount/(second*fr));
-        // }
-
         function Eye(x, y, w, h){
             this.x = x;
             this.y = y;
@@ -268,6 +247,26 @@
                 } else{
                     return false;
                 }
+            }
+        }
+
+        function EyesEnter(){
+            eyesEnterCount++;
+            if(eyesEnterCount <= 0.7*fr){
+                eyeL.y = (eyeY_origin-4*0.3*fr+60*0.7*fr)-60*eyesEnterCount;
+                eyeR.y = (eyeY_origin-4*0.3*fr+60*0.7*fr)-60*eyesEnterCount;
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesEnterCount <= 1*fr){
+                eyeL.y = (eyeY_origin-4*0.3*fr)+4*(eyesEnterCount-0.7*fr);
+                eyeR.y = (eyeY_origin-4*0.3*fr)+4*(eyesEnterCount-0.7*fr);
+                eyeL.display();
+                eyeR.display();
+            } else if(eyesEnterCount > 1*fr){
+                eyeL.display();
+                eyeR.display();
+                interacteMode = "Standby";
+                eyesEnterCount = 0;
             }
         }
     </script>
